@@ -1,0 +1,6 @@
+{
+  "importMap": "import_map.json",
+  "tasks": {
+    "test": "deno run -A main.ts --polling"
+  }
+}
