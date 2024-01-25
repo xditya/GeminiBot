@@ -116,6 +116,17 @@ bot.callbackQuery("info", async (ctx) => {
   });
 });
 
+const owners: number[] = [];
+for (const owner of config.OWNERS.split(" ")) {
+  owners.push(parseInt(owner));
+}
+
+bot
+  .filter((ctx) => owners.includes(ctx.from!.id))
+  .command("stats", async (ctx) => {
+    await ctx.reply(`Total users: ${await getStats()}`);
+  });
+
 bot.on("message:text", async (ctx) => {
   if (!(await checkJoin(ctx.from!.id))) {
     await ctx.react("👾");
@@ -159,17 +170,6 @@ bot.on("message:text", async (ctx) => {
     }
   }
 });
-
-const owners: number[] = [];
-for (const owner of config.OWNERS.split(" ")) {
-  owners.push(parseInt(owner));
-}
-
-bot
-  .filter((ctx) => owners.includes(ctx.from!.id))
-  .command("stats", async (ctx) => {
-    await ctx.reply(`Total users: ${await getStats()}`);
-  });
 
 await bot.init();
 export default bot;
