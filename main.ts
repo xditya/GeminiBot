@@ -9,7 +9,7 @@ if (Deno.args[0] == "--polling") {
   Deno.addSignalListener("SIGINT", () => bot.stop());
   Deno.addSignalListener(
     Deno.build.os != "windows" ? "SIGTERM" : "SIGINT",
-    () => bot.stop()
+    () => bot.stop(),
   );
 } else {
   console.info(`Started as @${bot.botInfo.username} on webhooks.`);

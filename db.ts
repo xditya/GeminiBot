@@ -45,7 +45,7 @@ async function addUser(id: number) {
 
 async function addConversation(
   id: number,
-  conv: Array<Map<string, ConversationPart[]>>
+  conv: Array<Map<string, ConversationPart[]>>,
 ) {
   const oldData = await userDb.findOne({ user_id: id });
   if (!oldData) {
@@ -57,18 +57,18 @@ async function addConversation(
     const new_conv = oldData.conversation_history.concat(conv);
     await userDb.updateOne(
       { user_id: id },
-      { $set: { conversation_history: new_conv } }
+      { $set: { conversation_history: new_conv } },
     );
   }
 }
 
 async function resetConversation(
   id: number,
-  conv: Array<Map<string, ConversationPart[]>>
+  conv: Array<Map<string, ConversationPart[]>>,
 ) {
   await userDb.updateOne(
     { user_id: id },
-    { $set: { conversation_history: conv } }
+    { $set: { conversation_history: conv } },
   );
 }
 
@@ -78,10 +78,15 @@ async function getConversations(id: number) {
   return data.conversation_history;
 }
 
+async function getStats() {
+  return await userDb.countDocuments();
+}
+
 export {
-  type ConversationPart,
-  addUser,
   addConversation,
+  addUser,
+  type ConversationPart,
   getConversations,
+  getStats,
   resetConversation,
 };

@@ -7,8 +7,8 @@
 import { Bot, GrammyError, HttpError, InlineKeyboard } from "grammy/mod.ts";
 
 import config from "$env";
-import { addUser } from "./db.ts";
-import { getResponse, getModelInfo } from "./gemini.ts";
+import { addUser, getStats } from "./db.ts";
+import { getModelInfo, getResponse } from "./gemini.ts";
 
 const bot = new Bot(config.BOT_TOKEN);
 
@@ -159,6 +159,17 @@ bot.on("message:text", async (ctx) => {
     }
   }
 });
+
+const owners: number[] = [];
+for (const owner of config.OWNERS.split(" ")) {
+  owners.push(parseInt(owner));
+}
+
+bot
+  .filter((ctx) => owners.includes(ctx.from!.id))
+  .command("stats", async (ctx) => {
+    await ctx.reply(`Total users: ${await getStats()}`);
+  });
 
 await bot.init();
 export default bot;
