@@ -91,7 +91,11 @@ I can remember <b>your last 50 conversations</b>, making your experience with me
 
 bot.callbackQuery("help_menu", async (ctx) => {
   await ctx.editMessageCaption({
-    caption: `<b>Help Menu</b> #TODO`,
+    caption: `
+<b>Help Menu</b>
+
+Send a message, and the AI will reply to it within seconds. 🤖💬
+`,
     parse_mode: "HTML",
     reply_markup: new InlineKeyboard()
       .url("Updates", "https://t.me/BotzHub")
