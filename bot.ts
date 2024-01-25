@@ -63,7 +63,7 @@ I can remember <b>your last 50 conversations</b>, making your experience with me
         .text("✋ Help", "help_menu")
         .url("🔄 Updates", "https://t.me/BotzHub")
         .row()
-        .text("Information", "info"),
+        .text("ℹ️ Information", "info"),
       parse_mode: "HTML",
     }
   );
