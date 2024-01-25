@@ -5,7 +5,7 @@ import bot from "./bot.ts";
 if (Deno.args[0] == "--polling") {
   console.info(`Started as @${bot.botInfo.username} on long polling.`);
 
-  const runner = bot.start();
+  bot.start();
   Deno.addSignalListener("SIGINT", () => bot.stop());
   Deno.addSignalListener(
     Deno.build.os != "windows" ? "SIGTERM" : "SIGINT",
