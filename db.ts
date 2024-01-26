@@ -30,6 +30,7 @@ interface UserDataSchema {
   _id: ObjectId;
   user_id: number;
   conversation_history: Array<Map<string, ConversationPart[]>>;
+  reaction_settings: boolean;
 }
 
 const userDb = db.collection<UserDataSchema>("UserData");
@@ -40,6 +41,7 @@ async function addUser(id: number) {
   await userDb.insertOne({
     user_id: id,
     conversation_history: new Array<Map<string, ConversationPart[]>>(),
+    reaction_settings: true,
   });
 }
 
@@ -52,6 +54,7 @@ async function addConversation(
     await userDb.insertOne({
       user_id: id,
       conversation_history: conv,
+      reaction_settings: true,
     });
   } else {
     const new_conv = oldData.conversation_history.concat(conv);
@@ -82,11 +85,28 @@ async function getStats() {
   return await userDb.countDocuments();
 }
 
+async function toggelReactionSettings(id: number) {
+  const currentReactionSettings = await getUserReactionSettings(id);
+  await userDb.updateOne(
+    { user_id: id },
+    { $set: { reaction_settings: !currentReactionSettings } },
+  );
+}
+
+async function getUserReactionSettings(id: number) {
+  const data = await userDb.findOne({ user_id: id });
+  if (!data) return true;
+  if (data.reaction_settings === undefined) return true;
+  return data.reaction_settings;
+}
+
 export {
   addConversation,
   addUser,
   type ConversationPart,
   getConversations,
   getStats,
+  getUserReactionSettings,
   resetConversation,
+  toggelReactionSettings,
 };

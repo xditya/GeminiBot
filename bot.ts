@@ -7,7 +7,12 @@
 import { Bot, GrammyError, HttpError, InlineKeyboard } from "grammy/mod.ts";
 
 import config from "$env";
-import { addUser, getStats } from "./db.ts";
+import {
+  addUser,
+  getStats,
+  getUserReactionSettings,
+  toggelReactionSettings,
+} from "./db.ts";
 import { getModelInfo, getResponse } from "./gemini.ts";
 
 const bot = new Bot(config.BOT_TOKEN);
@@ -41,9 +46,9 @@ bot.chatType("private").command("start", async (ctx) => {
       {
         reply_markup: new InlineKeyboard().url(
           "Join Now!",
-          "https://t.me/BotzHub"
+          "https://t.me/BotzHub",
         ),
-      }
+      },
     );
     return;
   }
@@ -60,12 +65,12 @@ bot.chatType("private").command("start", async (ctx) => {
 I can remember <b>your last 50 conversations</b>, making your experience with me more <i>personal and human-like</i>! 🤖💬
       `,
       reply_markup: new InlineKeyboard()
-        .text("✋ Help", "help_menu")
+        .text("⚙️ Settings", "settings")
         .url("🔄 Updates", "https://t.me/BotzHub")
         .row()
         .text("ℹ️ Information", "info"),
       parse_mode: "HTML",
-    }
+    },
   );
   await addUser(ctx.from!.id);
 });
@@ -81,7 +86,7 @@ bot.callbackQuery("back", async (ctx) => {
 I can remember <b>your last 50 conversations</b>, making your experience with me more <i>personal and human-like</i>! 🤖💬
     `,
     reply_markup: new InlineKeyboard()
-      .text("✋ Help", "help_menu")
+      .text("⚙️ Settings", "settings")
       .url("🔄 Updates", "https://t.me/BotzHub")
       .row()
       .text("ℹ️ Information", "info"),
@@ -89,15 +94,43 @@ I can remember <b>your last 50 conversations</b>, making your experience with me
   });
 });
 
-bot.callbackQuery("help_menu", async (ctx) => {
+bot.callbackQuery("settings", async (ctx) => {
+  const reactionsSettings = await getUserReactionSettings(ctx.from!.id);
+  const userReaction = reactionsSettings ? "✅" : "❌";
+  const userReactionMsg = reactionsSettings
+    ? "❌ Disable Reactions"
+    : "✅ Enable Reactions";
   await ctx.editMessageCaption({
     caption: `
-<b>Help Menu</b>
+<b>Settings Menu</b>
 
-Send a message, and the AI will reply to it within seconds. 🤖💬
+<b>Reaction on message recieve</b>: ${userReaction}
 `,
     parse_mode: "HTML",
     reply_markup: new InlineKeyboard()
+      .text(userReactionMsg, "reaction_toggle")
+      .url("Updates", "https://t.me/BotzHub")
+      .row()
+      .text("👈 Back", "back"),
+  });
+});
+
+bot.callbackQuery("reaction_toggle", async (ctx) => {
+  await toggelReactionSettings(ctx.from!.id);
+  const reactionsSettings = await getUserReactionSettings(ctx.from!.id);
+  const userReaction = reactionsSettings ? "✅" : "❌";
+  const userReactionMsg = reactionsSettings
+    ? "❌ Disable Reactions"
+    : "✅ Enable Reactions";
+  await ctx.editMessageCaption({
+    caption: `
+<b>Settings Menu</b>
+
+<b>Reaction on message recieve</b>: ${userReaction}
+`,
+    parse_mode: "HTML",
+    reply_markup: new InlineKeyboard()
+      .text(userReactionMsg, "reaction_toggle")
       .url("Updates", "https://t.me/BotzHub")
       .row()
       .text("👈 Back", "back"),
@@ -122,7 +155,7 @@ for (const owner of config.OWNERS.split(" ")) {
 }
 
 bot
-  .filter((ctx) => owners.includes(ctx.from!.id))
+  .filter((ctx) => owners.includes(ctx.from?.id || 0))
   .command("stats", async (ctx) => {
     await ctx.reply(`Total users: ${await getStats()}`);
   });
@@ -135,13 +168,15 @@ bot.on("message:text", async (ctx) => {
       {
         reply_markup: new InlineKeyboard().url(
           "Join Now!",
-          "https://t.me/BotzHub"
+          "https://t.me/BotzHub",
         ),
-      }
+      },
     );
     return;
   }
-  await ctx.react("⚡");
+  if (await getUserReactionSettings(ctx.from!.id)) {
+    await ctx.react("⚡");
+  }
   await ctx.api.sendChatAction(ctx.chat!.id, "typing");
   const text = ctx.message!.text;
   const response = await getResponse(ctx.from!.id, text);
