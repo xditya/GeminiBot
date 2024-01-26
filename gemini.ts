@@ -38,7 +38,7 @@ async function getResponse(user_id: number, question: string) {
     convHistoryToSend = [userConv];
     jsonConvHistoryToSend = convHistoryToSend.map((conversationMap) => {
       const conversationArray: [string, ConversationPart[]][] = Array.from(
-        conversationMap.entries(),
+        conversationMap.entries()
       );
       return Object.fromEntries(conversationArray);
     });
@@ -49,7 +49,7 @@ async function getResponse(user_id: number, question: string) {
       const conversationMap = conversationHistory[i];
       if (conversationMap instanceof Map) {
         const conversationArray: [string, ConversationPart[]][] = Array.from(
-          conversationMap.entries(),
+          conversationMap.entries()
         );
         jsonConvHistoryToSend.push(Object.fromEntries(conversationArray));
       } else {
@@ -99,12 +99,12 @@ async function getResponse(user_id: number, question: string) {
   convArray.push(modelConv);
 
   await addConversation(user_id, convArray);
-  return textResponse;
+  return textResponse.replace("* ", "→ ");
 }
 
 async function checkAndClearOldConversations(
   id: number,
-  conversationHistory: Array<Map<string, ConversationPart[]>>,
+  conversationHistory: Array<Map<string, ConversationPart[]>>
 ) {
   // this function keeps removing the first 2 elements of the array until the total conversations length is less than 50
   if (conversationHistory.length > 50) {
@@ -118,7 +118,7 @@ async function getModelInfo() {
   try {
     const data = await fetch(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro?key=" +
-        config.DEFAULT_API_KEY,
+        config.DEFAULT_API_KEY
     );
     const resp = await data.json();
     return `
