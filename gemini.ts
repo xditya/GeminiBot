@@ -99,7 +99,7 @@ async function getResponse(user_id: number, question: string) {
   convArray.push(modelConv);
 
   await addConversation(user_id, convArray);
-  return textResponse.replace("* ", "→ ");
+  return textResponse.replaceAll("* ", "→ ");
 }
 
 async function checkAndClearOldConversations(
