@@ -31,27 +31,29 @@ bot.catch((err) => {
 });
 
 async function checkJoin(user: number) {
-  const member = await bot.api.getChatMember("@BotzHub", user);
-  return (
-    member.status == "member" ||
-    member.status == "creator" ||
-    member.status == "administrator"
-  );
+  try {
+    const member = await bot.api.getChatMember("@BotzHub", user);
+    return (
+      member.status == "member" ||
+      member.status == "creator" ||
+      member.status == "administrator"
+    );
+  } catch (err) {
+    return false;
+  }
 }
 
 bot.chatType("private").command("start", async (ctx) => {
-  if (!(await checkJoin(ctx.from!.id))) {
-    await ctx.reply(
-      `Hey ${ctx.from!.first_name}, you must join @BotzHub to use this bot!`,
-      {
-        reply_markup: new InlineKeyboard().url(
-          "Join Now!",
-          "https://t.me/BotzHub",
-        ),
-      },
-    );
+  if (ctx.match && ctx.match === "how_to_remove") {
+    await ctx.reply(`Join @BotzHub to remove this button from bots replies.`, {
+      reply_markup: new InlineKeyboard().url(
+        "Join Now!",
+        "https://t.me/BotzHub",
+      ),
+    });
     return;
   }
+
   await ctx.api.sendPhoto(
     ctx.chat!.id,
     "https://storage.googleapis.com/gweb-uniblog-publish-prod/images/final_keyword_header.width-1600.format-webp.webp",
@@ -160,36 +162,35 @@ bot
     await ctx.reply(`Total users: ${await getStats()}`);
   });
 
-bot.on("message:text", async (ctx) => {
-  if (!(await checkJoin(ctx.from!.id))) {
-    await ctx.react("👾");
-    await ctx.reply(
-      `Hey ${ctx.from!.first_name}, you must join @BotzHub to use this bot!`,
-      {
-        reply_markup: new InlineKeyboard().url(
-          "Join Now!",
-          "https://t.me/BotzHub",
-        ),
-      },
-    );
-    return;
-  }
+bot.chatType("private").on("message:text", async (ctx) => {
   if (await getUserReactionSettings(ctx.from!.id)) {
     await ctx.react("⚡");
   }
   await ctx.api.sendChatAction(ctx.chat!.id, "typing");
   const text = ctx.message!.text;
   const response = await getResponse(ctx.from!.id, text);
+  let buttons = new InlineKeyboard();
+  if (!(await checkJoin(ctx.from!.id))) {
+    buttons = buttons
+      .url("Join Now!", "https://t.me/BotzHub")
+      .url(
+        "Remove buttons",
+        `https://t.me/${bot.botInfo?.username}?start=how_to_remove`,
+      );
+  }
+
   if (response.length > 4096) {
     const splitMsg = response.match(/[\s\S]{1,4096}/g) || [];
     for (const msg of splitMsg) {
       try {
         await ctx.reply(msg, {
           parse_mode: "Markdown",
+          reply_markup: buttons,
         });
       } catch (err) {
         await ctx.reply(`<blockquote>${msg}</blockquote>`, {
           parse_mode: "HTML",
+          reply_markup: buttons,
         });
       }
     }
@@ -197,10 +198,12 @@ bot.on("message:text", async (ctx) => {
     try {
       await ctx.reply(response, {
         parse_mode: "Markdown",
+        reply_markup: buttons,
       });
     } catch (err) {
       await ctx.reply(`<blockquote>${response}</blockquote>`, {
         parse_mode: "HTML",
+        reply_markup: buttons,
       });
     }
   }
