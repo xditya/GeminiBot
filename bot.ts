@@ -48,7 +48,7 @@ bot.chatType("private").command("start", async (ctx) => {
     await ctx.reply(`Join @BotzHub to remove this button from bots replies.`, {
       reply_markup: new InlineKeyboard().url(
         "Join Now!",
-        "https://t.me/BotzHub",
+        "https://t.me/BotzHub"
       ),
     });
     return;
@@ -72,7 +72,7 @@ I can remember <b>your last 50 conversations</b>, making your experience with me
         .row()
         .text("ℹ️ Information", "info"),
       parse_mode: "HTML",
-    },
+    }
   );
   await addUser(ctx.from!.id);
 });
@@ -171,12 +171,10 @@ bot.chatType("private").on("message:text", async (ctx) => {
   const response = await getResponse(ctx.from!.id, text);
   let buttons = new InlineKeyboard();
   if (!(await checkJoin(ctx.from!.id))) {
-    buttons = buttons
-      .url("Join Now!", "https://t.me/BotzHub")
-      .url(
-        "Remove buttons",
-        `https://t.me/${bot.botInfo?.username}?start=how_to_remove`,
-      );
+    buttons = buttons.url(
+      "Join Now",
+      `https://t.me/${bot.botInfo?.username}?start=how_to_remove`
+    );
   }
 
   if (response.length > 4096) {
