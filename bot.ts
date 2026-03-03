@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 @xditya <https://xditya.me/github>
+ * Copyright 2026 @xditya <https://xditya.me/github>
  * Redistribution and use in source and binary forms, with or without modification, are permitted
  * provided the copyright header is included and attributes are preserved.
  */
@@ -38,7 +38,7 @@ async function checkJoin(user: number) {
       member.status == "creator" ||
       member.status == "administrator"
     );
-  } catch (err) {
+  } catch (_err) {
     return false;
   }
 }
@@ -48,7 +48,7 @@ bot.chatType("private").command("start", async (ctx) => {
     await ctx.reply(`Join @BotzHub to remove this button from bots replies.`, {
       reply_markup: new InlineKeyboard().url(
         "Join Now!",
-        "https://t.me/BotzHub"
+        "https://t.me/BotzHub",
       ),
     });
     return;
@@ -68,11 +68,14 @@ I can remember <b>your last 50 conversations</b>, making your experience with me
       `,
       reply_markup: new InlineKeyboard()
         .text("⚙️ Settings", "settings")
+        .style("danger")
         .url("🔄 Updates", "https://t.me/BotzHub")
+        .style("success")
         .row()
-        .text("ℹ️ Information", "info"),
+        .text("ℹ️ Information", "info")
+        .style("primary"),
       parse_mode: "HTML",
-    }
+    },
   );
   await addUser(ctx.from!.id);
 });
@@ -89,9 +92,12 @@ I can remember <b>your last 50 conversations</b>, making your experience with me
     `,
     reply_markup: new InlineKeyboard()
       .text("⚙️ Settings", "settings")
+      .style("danger")
       .url("🔄 Updates", "https://t.me/BotzHub")
+      .style("success")
       .row()
-      .text("ℹ️ Information", "info"),
+      .text("ℹ️ Information", "info")
+      .style("primary"),
     parse_mode: "HTML",
   });
 });
@@ -168,41 +174,124 @@ bot.chatType("private").on("message:text", async (ctx) => {
   }
   await ctx.api.sendChatAction(ctx.chat!.id, "typing");
   const text = ctx.message!.text;
-  const response = await getResponse(ctx.from!.id, text);
+
   let buttons = new InlineKeyboard();
   if (!(await checkJoin(ctx.from!.id))) {
     buttons = buttons.url(
       "Join Now",
-      `https://t.me/${bot.botInfo?.username}?start=how_to_remove`
+      `https://t.me/${bot.botInfo?.username}?start=how_to_remove`,
     );
   }
 
+  const draftId = Date.now();
+  let firstTokenReceived = false;
+  let requestFinished = false;
+  const thinkingFrames = [
+    "⏳ Thinking...",
+    "⏳ Thinking......",
+    "⏳ Thinking.........",
+  ];
+
+  await ctx.api.sendMessageDraft(ctx.chat!.id, draftId, thinkingFrames[0], {
+    parse_mode: "HTML",
+  });
+
+  const thinkingAnimator = (async () => {
+    let frameIndex = 0;
+    while (!firstTokenReceived && !requestFinished) {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      if (firstTokenReceived || requestFinished) break;
+      frameIndex = (frameIndex + 1) % thinkingFrames.length;
+      try {
+        await ctx.api.sendMessageDraft(
+          ctx.chat!.id,
+          draftId,
+          thinkingFrames[frameIndex],
+          { parse_mode: "HTML" },
+        );
+      } catch {
+        // Ignore transient draft update issues while waiting for first token.
+      }
+    }
+  })();
+
+  let lastUpdate = Date.now();
+  let updateCount = 0;
+
+  const response = await getResponse(ctx.from!.id, text, async (streamText) => {
+    if (!firstTokenReceived) {
+      firstTokenReceived = true;
+    }
+
+    // Update message with streaming text, but throttle updates to avoid rate limits
+    const now = Date.now();
+    updateCount++;
+
+    // Update every 500ms or every 50 characters, whichever comes first
+    if (now - lastUpdate > 500 || updateCount % 50 === 0) {
+      lastUpdate = now;
+      try {
+        await ctx.api.sendMessageDraft(ctx.chat!.id, draftId, streamText, {
+          parse_mode: "HTML",
+        });
+      } catch (err) {
+        // Ignore rate limit or duplicate message errors
+        if (
+          err instanceof GrammyError &&
+          !err.description.includes("message is not modified") &&
+          !err.description.includes("Too Many Requests")
+        ) {
+          // Try plain text if HTML fails due to partial/invalid HTML while streaming
+          try {
+            await ctx.api.sendMessageDraft(ctx.chat!.id, draftId, streamText);
+          } catch {
+            // Silently ignore
+          }
+        }
+      }
+    }
+  });
+
+  requestFinished = true;
+  await thinkingAnimator;
+
+  // Send final response
   if (response.length > 4096) {
     const splitMsg = response.match(/[\s\S]{1,4096}/g) || [];
     for (const msg of splitMsg) {
       try {
-        await ctx.reply(msg, {
-          parse_mode: "Markdown",
-          reply_markup: buttons,
-        });
-      } catch (err) {
-        await ctx.reply(`<blockquote>${msg}</blockquote>`, {
+        await ctx.api.sendMessage(ctx.chat!.id, msg, {
           parse_mode: "HTML",
           reply_markup: buttons,
+          link_preview_options: { is_disabled: true },
+        });
+      } catch (_err) {
+        await ctx.api.sendMessage(ctx.chat!.id, msg, {
+          reply_markup: buttons,
+          link_preview_options: { is_disabled: true },
         });
       }
     }
   } else {
     try {
-      await ctx.reply(response, {
-        parse_mode: "Markdown",
-        reply_markup: buttons,
-      });
-    } catch (err) {
-      await ctx.reply(`<blockquote>${response}</blockquote>`, {
+      await ctx.api.sendMessage(ctx.chat!.id, response, {
         parse_mode: "HTML",
         reply_markup: buttons,
+        link_preview_options: { is_disabled: true },
       });
+    } catch (_err) {
+      try {
+        await ctx.api.sendMessage(ctx.chat!.id, response, {
+          reply_markup: buttons,
+          link_preview_options: { is_disabled: true },
+        });
+      } catch {
+        // If all fails, send a new message
+        await ctx.api.sendMessage(ctx.chat!.id, response, {
+          reply_markup: buttons,
+          link_preview_options: { is_disabled: true },
+        });
+      }
     }
   }
 });

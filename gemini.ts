@@ -4,6 +4,7 @@
  * provided the copyright header is included and attributes are preserved.
  */
 
+import OpenAI from "https://deno.land/x/openai@v4.69.0/mod.ts";
 import config from "$env";
 import {
   addConversation,
@@ -12,98 +13,193 @@ import {
   resetConversation,
 } from "./db.ts";
 
-const baseUrl =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" +
-  config.DEFAULT_API_KEY;
+const client = new OpenAI({
+  apiKey: config.DEFAULT_API_KEY,
+  baseURL: "https://api.z.ai/api/paas/v4/",
+});
 
-async function getResponse(user_id: number, question: string) {
-  const convArray = new Array<Map<string, ConversationPart[]>>();
+const SYSTEM_PROMPT = `You are **Gemini Talk Bot**, a friendly and helpful AI assistant developed by [Aditya](https://xditya.me) for [@BotzHub](https://t.me/BotzHub).
 
-  let userConv = new Map<string, any>();
-  userConv
-    .set("role", "user")
-    .set("parts", [{ text: question }] as ConversationPart[]);
+## Identity & Disclosure
+- If asked who you are, introduce yourself as: *"Gemini Talk Bot, an AI assistant developed by [Aditya](https://xditya.me) for [@BotzHub](https://t.me/BotzHub)."*
+- If asked what model you are based on, say **Gemini 2.5 Flash** — nothing more.
+- Do not reveal any underlying model details beyond what is stated above.
+- Always include markdown links to both [Aditya](https://xditya.me) and [@BotzHub](https://t.me/BotzHub) when referencing them.
+
+## Behavior Guidelines
+- Always respond in a **friendly, helpful, and approachable** tone.
+- Provide **accurate and relevant** information. If you're unsure, say so honestly — but offer guidance or next steps where possible.
+- Only share detailed information about your origin or developer **if the user explicitly asks**.
+- Keep responses concise unless the user requests elaboration.
+
+## Telegram HTML Formatting (Required)
+- Responses are rendered in Telegram with parse_mode set to "HTML".
+- Always format output using Telegram-supported HTML only.
+- Allowed tags: <b>, <i>, <u>, <s>, <code>, <pre>, <a href="...">, <blockquote>.
+- Do not use Markdown syntax like **bold**, *italic*, backticks, or markdown links.
+- Keep HTML valid and properly closed.
+
+## Telegram HTML Examples
+- Simple: <b>Answer:</b> This is a short response.
+- Link: Visit <a href="https://t.me/BotzHub">@BotzHub</a> for updates.
+- Code: <pre><code>const x = 42;</code></pre>
+- Quote: <blockquote>This is an important note.</blockquote>`;
+
+type StoredConversation =
+  | Map<string, unknown>
+  | { role?: unknown; parts?: unknown };
+
+function normalizeConversation(conv: StoredConversation): {
+  role?: string;
+  parts: ConversationPart[];
+} {
+  if (conv instanceof Map) {
+    const role = conv.get("role");
+    const parts = conv.get("parts");
+    return {
+      role: typeof role === "string" ? role : undefined,
+      parts: Array.isArray(parts) ? (parts as ConversationPart[]) : [],
+    };
+  }
+
+  const role = conv?.role;
+  const parts = conv?.parts;
+  return {
+    role: typeof role === "string" ? role : undefined,
+    parts: Array.isArray(parts) ? (parts as ConversationPart[]) : [],
+  };
+}
+
+async function getResponse(
+  user_id: number,
+  question: string,
+  onStream?: (text: string) => Promise<void>,
+) {
+  const requestStartedAt = Date.now();
+  console.log(
+    `[getResponse] start user=${user_id} questionChars=${question.length}`,
+  );
 
   const conversationHistory = await getConversations(user_id);
+  console.log(
+    `[getResponse] history-loaded user=${user_id} historyItems=${conversationHistory.length} elapsedMs=${Date.now() - requestStartedAt}`,
+  );
 
   await checkAndClearOldConversations(user_id, conversationHistory);
+  console.log(
+    `[getResponse] history-trim-checked user=${user_id} elapsedMs=${Date.now() - requestStartedAt}`,
+  );
 
-  convArray.push(userConv);
+  // Convert conversation history to OpenAI format
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+    { role: "system", content: SYSTEM_PROMPT },
+  ];
 
-  let convHistoryToSend: Array<Map<string, ConversationPart[]>> =
-    conversationHistory;
-  let jsonConvHistoryToSend;
+  // Add conversation history
+  for (const conv of conversationHistory as StoredConversation[]) {
+    const { role, parts } = normalizeConversation(conv);
 
-  if (!conversationHistory || conversationHistory.length === 0) {
-    convHistoryToSend = [userConv];
-    jsonConvHistoryToSend = convHistoryToSend.map((conversationMap) => {
-      const conversationArray: [string, ConversationPart[]][] = Array.from(
-        conversationMap.entries()
-      );
-      return Object.fromEntries(conversationArray);
-    });
-  } else {
-    conversationHistory.push(userConv);
-    jsonConvHistoryToSend = [];
-    for (let i = 0; i < conversationHistory.length; i++) {
-      const conversationMap = conversationHistory[i];
-      if (conversationMap instanceof Map) {
-        const conversationArray: [string, ConversationPart[]][] = Array.from(
-          conversationMap.entries()
-        );
-        jsonConvHistoryToSend.push(Object.fromEntries(conversationArray));
-      } else {
-        jsonConvHistoryToSend.push(conversationMap);
+    if (role && parts.length > 0) {
+      const content = parts
+        .map((part) => (typeof part?.text === "string" ? part.text : ""))
+        .filter(Boolean)
+        .join("\n");
+
+      if (!content) continue;
+
+      if (role === "user") {
+        messages.push({ role: "user", content });
+      } else if (role === "model") {
+        messages.push({ role: "assistant", content });
       }
     }
   }
-  const response: Response = await fetch(baseUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: jsonConvHistoryToSend,
-      safetySettings: [
-        {
-          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-          threshold: "BLOCK_NONE",
-        },
-        {
-          category: "HARM_CATEGORY_HATE_SPEECH",
-          threshold: "BLOCK_NONE",
-        },
-        {
-          category: "HARM_CATEGORY_HARASSMENT",
-          threshold: "BLOCK_NONE",
-        },
-        {
-          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-          threshold: "BLOCK_NONE",
-        },
-      ],
-    }),
-  });
-  let textResponse = "";
+
+  // Add current question
+  messages.push({ role: "user", content: question });
+
   try {
-    const resp = await response.json();
-    textResponse = resp.candidates[0].content.parts[0].text;
+    const streamRequestAt = Date.now();
+    console.log(
+      `[getResponse] stream-request user=${user_id} messages=${messages.length}`,
+    );
+
+    // Stream the response
+    const stream = await client.chat.completions.create({
+      model: "GLM-4.5-Flash",
+      messages: messages,
+      stream: true,
+    });
+    console.log(
+      `[getResponse] stream-open user=${user_id} openMs=${Date.now() - streamRequestAt} totalElapsedMs=${Date.now() - requestStartedAt}`,
+    );
+
+    let fullResponse = "";
+    let chunkCount = 0;
+    let firstChunkAt: number | null = null;
+
+    // Process the stream
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content || "";
+      if (content) {
+        chunkCount++;
+        if (firstChunkAt === null) {
+          firstChunkAt = Date.now();
+          console.log(
+            `[getResponse] first-token user=${user_id} ttfbMs=${firstChunkAt - streamRequestAt} totalElapsedMs=${firstChunkAt - requestStartedAt}`,
+          );
+        }
+
+        fullResponse += content;
+
+        if (chunkCount % 40 === 0) {
+          console.log(
+            `[getResponse] streaming user=${user_id} chunks=${chunkCount} chars=${fullResponse.length} elapsedMs=${Date.now() - requestStartedAt}`,
+          );
+        }
+
+        // Call the streaming callback if provided
+        if (onStream) {
+          await onStream(fullResponse);
+        }
+      }
+    }
+    console.log(
+      `[getResponse] stream-complete user=${user_id} chunks=${chunkCount} chars=${fullResponse.length} elapsedMs=${Date.now() - requestStartedAt}`,
+    );
+
+    // Save conversation to database
+    const convArray = new Array<Map<string, ConversationPart[]>>();
+
+    const userConv = new Map<string, ConversationPart[]>();
+    userConv.set("role", "user" as unknown as ConversationPart[]);
+    userConv.set("parts", [{ text: question }] as ConversationPart[]);
+    convArray.push(userConv);
+
+    const modelConv = new Map<string, ConversationPart[]>();
+    modelConv.set("role", "model" as unknown as ConversationPart[]);
+    modelConv.set("parts", [{ text: fullResponse }] as ConversationPart[]);
+    convArray.push(modelConv);
+
+    const dbSaveAt = Date.now();
+    await addConversation(user_id, convArray);
+    console.log(
+      `[getResponse] db-saved user=${user_id} dbMs=${Date.now() - dbSaveAt} totalElapsedMs=${Date.now() - requestStartedAt}`,
+    );
+
+    return fullResponse.replaceAll("* ", "→ ");
   } catch (err) {
-    console.error("User: ", user_id, "Error: ", err);
+    console.error(
+      `[getResponse] error user=${user_id} elapsedMs=${Date.now() - requestStartedAt}`,
+      err,
+    );
     return "Sorry, I'm having trouble understanding you. Could you please rephrase your question?";
   }
-  const modelConv = new Map<string, any>();
-  modelConv
-    .set("role", "model")
-    .set("parts", [{ text: textResponse }] as ConversationPart[]);
-
-  convArray.push(modelConv);
-
-  await addConversation(user_id, convArray);
-  return textResponse.replaceAll("* ", "→ ");
 }
 
 async function checkAndClearOldConversations(
   id: number,
-  conversationHistory: Array<Map<string, ConversationPart[]>>
+  conversationHistory: Array<Map<string, ConversationPart[]>>,
 ) {
   // this function keeps removing the first 2 elements of the array until the total conversations length is less than 50
   if (conversationHistory.length > 50) {
@@ -113,24 +209,16 @@ async function checkAndClearOldConversations(
   }
 }
 
-async function getModelInfo() {
-  try {
-    const data = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro?key=" +
-        config.DEFAULT_API_KEY
-    );
-    const resp = await data.json();
-    return `
-<b>Model Name:</b> <blockquote>${resp.displayName} v${resp.version} [${resp.name}]</blockquote>
-<b>Description:</b> <blockquote>${resp.description}</blockquote>
-<b>Input Token Limit:</b> <blockquote>${resp.inputTokenLimit}</blockquote>
-<b>Output Token Limit:</b> <blockquote>${resp.outputTokenLimit}</blockquote>
+function getModelInfo() {
+  return `
+<b>Model Name:</b> <blockquote>GLM-4.5-Flash (via Z.AI API)</blockquote>
+<b>Description:</b> <blockquote>Fast and efficient AI model with streaming capabilities for real-time responses</blockquote>
+<b>Features:</b> <blockquote>• Conversation history (last 50 exchanges)
+• Real-time streaming responses
+• Context-aware conversations</blockquote>
 
 <b>Bot developed and hosted by @BotzHub.</b>
 `;
-  } catch (err) {
-    return "Could not fetch data. Try again later!";
-  }
 }
 
 export { getModelInfo, getResponse };
